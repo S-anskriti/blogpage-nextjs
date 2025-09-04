@@ -1,115 +1,211 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { useState, useEffect } from "react";
+import { db } from "../firebaseConfig";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  orderBy
+} from "firebase/firestore";
+// import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 
 export default function Home() {
+  const [posts, setPosts] = useState([]);
+  const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [content, setContent] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [search, setSearch] = useState("");
+
+  const postsRef = collection(db, "posts");
+
+  // fetch posts
+  useEffect(() => {
+    const fetchPosts = async () => {
+      const q = query(postsRef, orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setPosts(data);
+    };
+    fetchPosts();
+  }, []);
+
+  // create/update post
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title || !author || !content) return;
+
+    if (editingId) {
+      const postDoc = doc(db, "posts", editingId);
+      await updateDoc(postDoc, { title, author, content });
+      setEditingId(null);
+    } else {
+      await addDoc(postsRef, { title, author, content, createdAt: new Date() });
+    }
+
+    setTitle("");
+    setAuthor("");
+    setContent("");
+    window.location.reload();
+  };
+
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, "posts", id));
+    setPosts(posts.filter((p) => p.id !== id));
+  };
+
+  const handleEdit = (post) => {
+    setTitle(post.title);
+    setAuthor(post.author);
+    setContent(post.content);
+    setEditingId(post.id);
+  };
+
+  // filter posts by search
+  const filteredPosts = posts.filter(
+    (p) =>
+      p.title.toLowerCase().includes(search.toLowerCase()) ||
+      p.author.toLowerCase().includes(search.toLowerCase()) ||
+      p.content.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-gradient-to-b from-[#ffb3b3] to-white p-6">
+      {/* Header */}
+      <header className="text-center mb-10">
+        <div className="flex justify-center items-center gap-4">
+          <div className="w-18 h-18 rounded-xl bg-gradient-to-br from-[#f8afa6] to-[#f79489] flex items-center justify-center text-white text-3xl">
+            🌸
+          </div>
+          <div>
+            <h1 className="text-4xl font-bold">Mini Blog</h1>
+            <p className="text-gray-600 text-lg">Create. Share. Smile.</p>
+          </div>
         </div>
+      </header>
+
+      {/* Main */}
+      <main className="max-w-6xl mx-auto grid md:grid-cols-[420px_1fr] gap-6">
+        {/* Form Card */}
+        <section className="bg-white rounded-2xl shadow-lg p-6 border border-[#f1dada]">
+          <h2 className="text-2xl font-semibold mb-4">
+            {editingId ? "Edit Post" : "Create a Post"}
+          </h2>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input
+              type="text"
+              placeholder="Post Title"
+              className="w-full p-4 border rounded-xl border-[#f8b7b7] bg-[#f9f9f9]"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Author"
+              className="w-full p-4 border rounded-xl border-[#f8b7b7] bg-[#f9f9f9]"
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              required
+            />
+            <textarea
+              placeholder="Write your story..."
+              className="w-full p-4 border rounded-xl border-[#f8b7b7] bg-[#f9f9f9] min-h-[130px]"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              required
+            />
+            <div className="flex gap-3">
+              <button className="bg-[#f8afa6] hover:bg-[#f79489] text-white font-semibold px-4 py-2 rounded-xl">
+                {editingId ? "Save ✨" : "Publish ✨"}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitle("");
+                    setAuthor("");
+                    setContent("");
+                    setEditingId(null);
+                  }}
+                  className="bg-[#f6eaea] text-[#222] px-4 py-2 rounded-xl"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        </section>
+
+        {/* Posts Card */}
+        <section className="bg-white rounded-2xl shadow-lg p-6 border border-[#f1dada]">
+          <h2 className="text-2xl font-semibold mb-4">All Posts</h2>
+          {/* Search */}
+          <input
+            type="search"
+            placeholder="Search posts by title, author, or content..."
+            className="w-full p-3 border rounded-xl border-[#f8b7b7] bg-[#f9f9f9] mb-4"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="space-y-4">
+            {filteredPosts.length === 0 && (
+              <div className="p-6 border-2 border-dashed border-[#f3caca] rounded-xl text-gray-500 text-center">
+                No posts found
+              </div>
+            )}
+            {filteredPosts.map((p) => (
+              <PostCard key={p.id} post={p} onEdit={handleEdit} onDelete={handleDelete} />
+            ))}
+          </div>
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      {/* Footer */}
+      <footer className="text-center mt-10 text-gray-600">
+        Made with ♥ — Sanskriti
       </footer>
+    </div>
+  );
+}
+
+// Separate component for Post with Read More toggle
+function PostCard({ post, onEdit, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const truncated = post.content.slice(0, 320);
+
+  return (
+    <div className="bg-gradient-to-b from-[#fbc2c2] to-[#f9adad] border-l-6 border-[#f79489] p-5 rounded-xl">
+      <h3 className="text-xl font-semibold">{post.title}</h3>
+      <p className="text-gray-600 text-sm mt-1">
+        By <strong>{post.author}</strong>
+      </p>
+      <p className="mt-2">{expanded ? post.content : truncated}{post.content.length > 320 && "…"}</p>
+      {post.content.length > 320 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-[#f79489] font-semibold mt-1"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => onEdit(post)}
+          className="px-3 py-1 border border-[#f8afa6] rounded-xl hover:bg-[#ffeaea]"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => onDelete(post.id)}
+          className="px-3 py-1 border border-[#f8afa6] rounded-xl text-red-500 hover:bg-[#ffeaea]"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
