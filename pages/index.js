@@ -3,12 +3,12 @@ import { db } from "../firebaseConfig";
 import {
   collection,
   addDoc,
-  getDocs,
   updateDoc,
   deleteDoc,
   doc,
   query,
-  orderBy
+  orderBy,
+  onSnapshot,
 } from "firebase/firestore";
 
 export default function Home() {
@@ -21,18 +21,17 @@ export default function Home() {
 
   const postsRef = collection(db, "posts");
 
-  // Fetch posts
+  // ✅ Fetch posts in realtime
   useEffect(() => {
-    const fetchPosts = async () => {
-      const q = query(postsRef, orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
+    const q = query(postsRef, orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setPosts(data);
-    };
-    fetchPosts();
+    });
+    return () => unsubscribe();
   }, []);
 
-  // Create or update post
+  // ✅ Create or update post
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title || !author || !content) return;
@@ -42,7 +41,12 @@ export default function Home() {
       await updateDoc(postDoc, { title, author, content });
       setEditingId(null);
     } else {
-      await addDoc(postsRef, { title, author, content, createdAt: new Date() });
+      await addDoc(postsRef, {
+        title,
+        author,
+        content,
+        createdAt: new Date(),
+      });
     }
 
     setTitle("");
@@ -50,9 +54,10 @@ export default function Home() {
     setContent("");
   };
 
+  // ✅ Delete post
   const handleDelete = async (id) => {
     await deleteDoc(doc(db, "posts", id));
-    setPosts(posts.filter((p) => p.id !== id));
+    // No manual setPosts needed, onSnapshot updates automatically
   };
 
   const handleEdit = (post) => {
@@ -62,7 +67,7 @@ export default function Home() {
     setEditingId(post.id);
   };
 
-  // Filter posts by search
+  // ✅ Filter posts by search
   const filteredPosts = posts.filter(
     (p) =>
       p.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -169,10 +174,11 @@ export default function Home() {
   );
 }
 
-// PostCard Component
+// ✅ PostCard Component
 function PostCard({ post, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false);
-  const truncated = post.content.length > 320 ? post.content.slice(0, 320) + "…" : post.content;
+  const truncated =
+    post.content.length > 320 ? post.content.slice(0, 320) + "…" : post.content;
 
   return (
     <div className="post bg-gradient-to-b from-[#fbc2c2] to-[#f9adad] border-l-6 border-[#f79489] p-5 rounded-xl">
@@ -180,7 +186,9 @@ function PostCard({ post, onEdit, onDelete }) {
       <p className="meta text-gray-600 text-sm mt-1">
         By <strong>{post.author}</strong>
       </p>
-      <p className="content mt-2 text-[#222]">{expanded ? post.content : truncated}</p>
+      <p className="content mt-2 text-[#222]">
+        {expanded ? post.content : truncated}
+      </p>
       {post.content.length > 320 && (
         <button
           onClick={() => setExpanded(!expanded)}
