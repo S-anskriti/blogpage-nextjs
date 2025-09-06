@@ -1,15 +1,6 @@
 import { useState, useEffect } from "react";
 import { db } from "../firebaseConfig";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  orderBy,
-  onSnapshot,
-} from "firebase/firestore";
+import { ref, push, set, update, remove, onValue } from "firebase/database";
 
 export default function Home() {
   const [posts, setPosts] = useState([]);
@@ -19,16 +10,24 @@ export default function Home() {
   const [editingId, setEditingId] = useState(null);
   const [search, setSearch] = useState("");
 
-  const postsRef = collection(db, "posts");
+  const postsRef = ref(db, "posts");
 
   // ✅ Fetch posts in realtime
   useEffect(() => {
-    const q = query(postsRef, orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setPosts(data);
+    onValue(postsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const loadedPosts = Object.entries(data).map(([id, value]) => ({
+          id,
+          ...value,
+        }));
+        // sort by createdAt (latest first)
+        loadedPosts.sort((a, b) => b.createdAt - a.createdAt);
+        setPosts(loadedPosts);
+      } else {
+        setPosts([]);
+      }
     });
-    return () => unsubscribe();
   }, []);
 
   // ✅ Create or update post
@@ -37,15 +36,16 @@ export default function Home() {
     if (!title || !author || !content) return;
 
     if (editingId) {
-      const postDoc = doc(db, "posts", editingId);
-      await updateDoc(postDoc, { title, author, content });
+      const postRef = ref(db, `posts/${editingId}`);
+      await update(postRef, { title, author, content });
       setEditingId(null);
     } else {
-      await addDoc(postsRef, {
+      const newPostRef = push(postsRef);
+      await set(newPostRef, {
         title,
         author,
         content,
-        createdAt: new Date(),
+        createdAt: Date.now(),
       });
     }
 
@@ -56,8 +56,8 @@ export default function Home() {
 
   // ✅ Delete post
   const handleDelete = async (id) => {
-    await deleteDoc(doc(db, "posts", id));
-    // No manual setPosts needed, onSnapshot updates automatically
+    const postRef = ref(db, `posts/${id}`);
+    await remove(postRef);
   };
 
   const handleEdit = (post) => {
